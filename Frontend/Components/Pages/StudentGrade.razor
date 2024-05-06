@@ -1,0 +1,216 @@
+﻿@page "/studentgrade"
+@rendermode InteractiveServer
+@using System.Net.Http
+@using System.Text.Json
+@using System.Text
+@using System.Collections.Generic
+
+<h3>StudentGrade</h3>
+
+@if (studentGrades != null)
+{
+    <div>
+        <p>@buttonText Student Grade:</p>
+        
+        <select @bind="newStudentGradeStudenName">
+            @foreach (var student in students)
+            {
+                <option value="@student.id">@student.name @student.surname </option>
+            }
+        </select>
+        <select @bind="newStudentGradeGradeName">
+            @foreach (var grade in grades)
+            {
+                <option value="@grade.id">@grade.name</option>
+            }
+        </select>
+        <input type="text" @bind="newStudentGradeSection" placeholder="Section" />
+        <button type="button" class="btn btn-success" @onclick="@(buttonText == "Add" ? (Func<Task>)AddStudentGrade : PutStudentGrade)">@buttonText</button>
+        <br />
+    </div>
+
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Id</th>
+                <th>Student Name</th>
+                <th>Grade Name</th>
+                <th>Section</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var studentGrade in studentGrades)
+            {
+                <tr>
+                    <td>@studentGrade.id</td>
+                    <td>@studentGrade.studentName</td>
+                    <td>@studentGrade.gradeName</td>
+                    <td>@studentGrade.section</td>
+                    <td>
+                        <button type="button" class="btn btn-danger" @onclick=@(() => DeleteStudentGrade(@studentGrade.id))>Delete</button>
+                        <button type="button" class="btn btn-primary" @onclick=@(() => StartPut(@studentGrade.id, @studentGrade.studentId, @studentGrade.gradeId, @studentGrade.section ))>Modify</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+else
+{
+    <p>Without Data</p>
+}
+
+@code {
+    public class StudentGrades
+    {
+        public int id { get; set; }
+        public int studentId { get; set; }
+        public int gradeId { get; set; }
+        public string section { get; set; }
+        public string studentName { get; set; }
+        public string gradeName { get; set; }
+    }
+
+    public class Students
+    {
+        public int id { get; set; }
+        public string name { get; set; }
+        public string surname { get; set; }
+    }
+
+    public class Grades
+    {
+        public int id { get; set; }
+        public string name { get; set; }
+    }
+
+    private List<StudentGrades> studentGrades;
+    private List<Students> students;
+    private List<Grades> grades;
+    private int currentId;
+    private int newStudentGradeStudenName;
+    private int newStudentGradeGradeName;
+    private string newStudentGradeSection;
+    private string buttonText = "Add";
+
+    private async Task RefreshList()
+    {
+        using HttpClient httpClient = new HttpClient();
+        var response = await httpClient.GetAsync("http://localhost:5262/api/StudentGrades");
+        response.EnsureSuccessStatusCode();
+        var jsonString = await response.Content.ReadAsStringAsync();
+
+        studentGrades = JsonSerializer.Deserialize<List<StudentGrades>>(jsonString);
+
+        foreach (var studentGrade in studentGrades)
+        {
+            var student = students.FirstOrDefault(g => g.id == studentGrade.studentId);
+            if (student != null)
+            {
+                studentGrade.studentName = student.name + " " + student.surname;
+            }
+
+            var grade = grades.FirstOrDefault(g => g.id == studentGrade.gradeId);
+            if (grade != null)
+            {
+                studentGrade.gradeName = grade.name;
+            }
+        }
+    }
+
+    private async Task LoadStudents()
+    {
+        using HttpClient httpClient = new HttpClient();
+        var response = await httpClient.GetAsync("http://localhost:5262/api/Students");
+        response.EnsureSuccessStatusCode();
+        var jsonString = await response.Content.ReadAsStringAsync();
+
+        students = JsonSerializer.Deserialize<List<Students>>(jsonString);
+    }
+
+    private async Task LoadGrades()
+    {
+        using HttpClient httpClient = new HttpClient();
+        var response = await httpClient.GetAsync("http://localhost:5262/api/Grades");
+        response.EnsureSuccessStatusCode();
+        var jsonString = await response.Content.ReadAsStringAsync();
+
+        grades = JsonSerializer.Deserialize<List<Grades>>(jsonString);
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadStudents();
+        if (students != null)
+        {
+            await LoadGrades();
+            await RefreshList();
+        }
+    }
+
+    private async Task AddStudentGrade()
+    {
+        var newStudentGrade = new StudentGrades
+            {
+                studentId = newStudentGradeStudenName,
+                gradeId = newStudentGradeGradeName,
+                section = newStudentGradeSection,
+            };
+
+        using HttpClient httpClient = new HttpClient();
+        var json = JsonSerializer.Serialize(newStudentGrade);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        var response = await httpClient.PostAsync("http://localhost:5262/api/StudentGrades", content);
+        response.EnsureSuccessStatusCode();
+
+        newStudentGradeSection = "";
+        StateHasChanged();
+        await RefreshList();
+    }
+
+    private async Task PutStudentGrade()
+    {
+        var newStudentGrade = new StudentGrades
+            {
+                id = currentId,
+                studentId = newStudentGradeStudenName,
+                gradeId = newStudentGradeGradeName,
+                section = newStudentGradeSection,
+            };
+
+        using HttpClient httpClient = new HttpClient();
+        var json = JsonSerializer.Serialize(newStudentGrade);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        var response = await httpClient.PutAsync("http://localhost:5262/api/StudentGrades/" + newStudentGrade.id, content);
+        response.EnsureSuccessStatusCode();
+
+        newStudentGradeSection = "";
+        currentId = 0;
+        buttonText = "Add";
+        StateHasChanged();
+        await RefreshList();
+    }
+
+    private void StartPut(int studentGradeId, int studentGradeStudentId, int studentGradeGradeId, string studentGradeSection)
+    {
+        currentId = studentGradeId;
+        newStudentGradeStudenName = studentGradeStudentId;
+        newStudentGradeGradeName = studentGradeGradeId;
+        newStudentGradeSection = studentGradeSection;
+        buttonText = "Update";
+    }
+
+    private async Task DeleteStudentGrade(int id)
+    {
+        using HttpClient httpClient = new HttpClient();
+        var response = await httpClient.DeleteAsync("http://localhost:5262/api/StudentGrades/" + id);
+        response.EnsureSuccessStatusCode();
+
+        StateHasChanged();
+        await RefreshList();
+    }
+    
+}

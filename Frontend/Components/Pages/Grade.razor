@@ -1,0 +1,177 @@
+﻿@page "/grade"
+@rendermode InteractiveServer
+@using System.Net.Http
+@using System.Text.Json
+@using System.Text
+@using System.Collections.Generic
+
+<h3>Teacher</h3>
+
+@if (teachers != null)
+{
+    <div>
+        <p>@buttonText Teacher:</p>
+        <input type="text" @bind="newGradeName" placeholder="Name" />
+        <select @bind="newGradeTeacherId">
+            @foreach (var teacher in teachers)
+            {
+                <option value="@teacher.id">@teacher.name @teacher.surname</option>
+            }
+        </select>
+        <button type="button" class="btn btn-success" @onclick="@(buttonText == "Add" ? (Func<Task>)AddGrade : PutGrade)">@buttonText</button>
+        <br />
+    </div>
+
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Id</th>
+                <th>Name</th>
+                <th>Teacher</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var grade in grades)
+            {
+                <tr>
+                    <td>@grade.id</td>
+                    <td>@grade.name</td>
+                    <td>@grade.teacherName</td>
+                    <td>
+                        <button type="button" class="btn btn-danger" @onclick=@(() => DeleteGrade(@grade.id))>Delete</button>
+                        <button type="button" class="btn btn-primary" @onclick=@(() => StartPut(@grade.id, @grade.name, @grade.teacherId ))>Modify</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+else
+{
+    <p>Without Data</p>
+}
+
+@code {
+    public class Grades
+    {
+        public int id { get; set; }
+        public string name { get; set; }
+        public int teacherId { get; set; }
+        public string teacherName { get; set; }
+    }
+    public class Teachers
+    {
+        public int id { get; set; }
+        public string name { get; set; }
+        public string surname { get; set; }
+    }
+
+    private List<Grades> grades;
+    private List<Teachers> teachers;
+    
+    private int currentId;
+    private string newGradeName;
+    private int newGradeTeacherId;
+    private string buttonText = "Add";
+
+    private async Task RefreshList()
+    {
+        using HttpClient httpClient = new HttpClient();
+        var response = await httpClient.GetAsync("http://localhost:5262/api/Grades");
+        response.EnsureSuccessStatusCode();
+        var jsonString = await response.Content.ReadAsStringAsync();
+
+        grades = JsonSerializer.Deserialize<List<Grades>>(jsonString);
+
+        foreach (var grade in grades)
+        {
+            var teacher = teachers.FirstOrDefault(g => g.id == grade.teacherId);
+            if (teacher != null)
+            {
+                grade.teacherName = teacher.name + " " + teacher.surname;
+            }
+        }
+    }
+
+    private async Task LoadTeachers()
+    {
+        using HttpClient httpClient = new HttpClient();
+        var response = await httpClient.GetAsync("http://localhost:5262/api/Teachers");
+        response.EnsureSuccessStatusCode();
+        var jsonString = await response.Content.ReadAsStringAsync();
+
+        teachers = JsonSerializer.Deserialize<List<Teachers>>(jsonString);
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTeachers();
+        if (teachers != null)
+        {
+            await RefreshList();
+        }
+    }
+
+    private async Task AddGrade()
+    {
+        var newGrade = new Grades
+            {
+                name = newGradeName,
+                teacherId = newGradeTeacherId,
+            };
+
+        using HttpClient httpClient = new HttpClient();
+        var json = JsonSerializer.Serialize(newGrade);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        var response = await httpClient.PostAsync("http://localhost:5262/api/Grades", content);
+        response.EnsureSuccessStatusCode();
+
+        newGradeName = "";
+        StateHasChanged();
+        await RefreshList();
+    }
+
+    private async Task PutGrade()
+    {
+        var newGrade = new Grades
+            {
+                id = currentId,
+                name = newGradeName,
+                teacherId = newGradeTeacherId,
+            };
+
+        using HttpClient httpClient = new HttpClient();
+        var json = JsonSerializer.Serialize(newGrade);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        var response = await httpClient.PutAsync("http://localhost:5262/api/Grades/" + newGrade.id, content);
+        response.EnsureSuccessStatusCode();
+
+        newGradeName = "";
+        currentId = 0;
+        buttonText = "Add";
+        StateHasChanged();
+        await RefreshList();
+    }
+
+    private void StartPut(int teacherId, string gradeName, int gradeTeacherId)
+    {
+        currentId = teacherId;
+        newGradeName = gradeName;
+        newGradeTeacherId = gradeTeacherId;
+        buttonText = "Update";
+    }
+
+    private async Task DeleteGrade(int id)
+    {
+        using HttpClient httpClient = new HttpClient();
+        var response = await httpClient.DeleteAsync("http://localhost:5262/api/Grades/" + id);
+        response.EnsureSuccessStatusCode();
+
+        StateHasChanged();
+        await RefreshList();
+    }
+    
+}

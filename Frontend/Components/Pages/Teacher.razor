@@ -1,0 +1,190 @@
+﻿@page "/teacher"
+@rendermode InteractiveServer
+@using System.Net.Http
+@using System.Text.Json
+@using System.Text
+@using System.Collections.Generic
+
+<h3>Teacher</h3>
+
+@if (teachers != null)
+{
+    <div>
+        <p>@buttonText Teacher:</p>
+        <input type="text" @bind="newTeacherName" placeholder="Name" />
+        <input type="text" @bind="newTeacherSurname" placeholder="Surname" />
+        <select @bind="newTeacherGender">
+            @foreach (var gender in genders)
+            {
+                <option value="@gender.id">@gender.gender1</option>
+            }
+        </select>
+        <button type="button" class="btn btn-success" @onclick="@(buttonText == "Add" ? (Func<Task>)AddTeacher : PutTeacher)">@buttonText</button>
+        <br />
+    </div>
+
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Id</th>
+                <th>Name</th>
+                <th>Surname</th>
+                <th>Gender</th>
+                <th>Birthday</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var teacher in teachers)
+            {
+                <tr>
+                    <td>@teacher.id</td>
+                    <td>@teacher.name</td>
+                    <td>@teacher.surname</td>
+                    <td>@teacher.genderName</td>
+                    <td>
+                        <button type="button" class="btn btn-danger" @onclick=@(() => DeleteTeacher(@teacher.id))>Delete</button>
+                        <button type="button" class="btn btn-primary" @onclick=@(() => StartPut(@teacher.id, @teacher.name, @teacher.surname, @teacher.gender ))>Modify</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+else
+{
+    <p>Without Data</p>
+}
+
+@code {
+    public class Teachers
+    {
+        public int id { get; set; }
+        public string name { get; set; }
+        public string surname { get; set; }
+        public int gender { get; set; }
+        public string genderName { get; set; }
+    }
+
+    public class Genders
+    {
+        public int id { get; set; }
+        public string gender1 { get; set; }
+    }
+
+    private List<Teachers> teachers;
+    private List<Genders> genders;
+    private int currentId;
+    private string newTeacherName;
+    private string newTeacherSurname;
+    private int newTeacherGender = 0;
+    private string buttonText = "Add";
+
+    private async Task RefreshList()
+    {
+        using HttpClient httpClient = new HttpClient();
+        var response = await httpClient.GetAsync("http://localhost:5262/api/Teachers");
+        response.EnsureSuccessStatusCode();
+        var jsonString = await response.Content.ReadAsStringAsync();
+
+        teachers = JsonSerializer.Deserialize<List<Teachers>>(jsonString);
+
+        foreach (var teacher in teachers)
+        {
+            var gender = genders.FirstOrDefault(g => g.id == teacher.gender);
+            if (gender != null)
+            {
+                teacher.genderName = gender.gender1;
+            }
+        }
+    }
+
+    private async Task LoadGenders()
+    {
+        using HttpClient httpClient = new HttpClient();
+        var response = await httpClient.GetAsync("http://localhost:5262/api/Genders");
+        response.EnsureSuccessStatusCode();
+        var jsonString = await response.Content.ReadAsStringAsync();
+
+        genders = JsonSerializer.Deserialize<List<Genders>>(jsonString);
+        Console.WriteLine(genders);
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadGenders();
+        if (genders != null)
+        {
+            await RefreshList();
+        }
+    }
+
+    private async Task AddTeacher()
+    {
+        var newTeacher = new Teachers
+            {
+                name = newTeacherName,
+                surname = newTeacherSurname,
+                gender = newTeacherGender,
+         
+            };
+
+        using HttpClient httpClient = new HttpClient();
+        var json = JsonSerializer.Serialize(newTeacher);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        var response = await httpClient.PostAsync("http://localhost:5262/api/Teachers", content);
+        response.EnsureSuccessStatusCode();
+
+        newTeacherName = "";
+        newTeacherSurname = "";
+        StateHasChanged();
+        await RefreshList();
+    }
+
+    private async Task PutTeacher()
+    {
+        var newTeacher = new Teachers
+            {
+                id = currentId,
+                name = newTeacherName,
+                surname = newTeacherSurname,
+                gender = newTeacherGender,
+          
+            };
+
+        using HttpClient httpClient = new HttpClient();
+        var json = JsonSerializer.Serialize(newTeacher);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        var response = await httpClient.PutAsync("http://localhost:5262/api/Teachers/" + newTeacher.id, content);
+        response.EnsureSuccessStatusCode();
+
+        newTeacherName = "";
+        newTeacherSurname = "";
+        currentId = 0;
+        buttonText = "Add";
+        StateHasChanged();
+        await RefreshList();
+    }
+
+    private void StartPut(int teacherId, string teacherName, string teacherSurname, int teacherGender)
+    {
+        currentId = teacherId;
+        newTeacherName = teacherName;
+        newTeacherSurname = teacherSurname;
+        newTeacherGender = teacherGender;
+        buttonText = "Update";
+    }
+
+    private async Task DeleteTeacher(int id)
+    {
+        using HttpClient httpClient = new HttpClient();
+        var response = await httpClient.DeleteAsync("http://localhost:5262/api/Teachers/" + id);
+        response.EnsureSuccessStatusCode();
+
+        StateHasChanged();
+        await RefreshList();
+    }
+    
+}

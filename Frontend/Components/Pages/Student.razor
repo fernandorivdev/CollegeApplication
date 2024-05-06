@@ -1,0 +1,195 @@
+﻿@page "/student"
+@rendermode InteractiveServer
+@using System.Net.Http
+@using System.Text.Json
+@using System.Text
+@using System.Collections.Generic
+
+<h3>Student</h3>
+
+@if (students != null)
+{
+    <div>
+        <p>@buttonText Student:</p>
+        <input type="text" @bind="newStudentName" placeholder="Name" />
+        <input type="text" @bind="newStudentSurname" placeholder="Surname" />
+        <select @bind="newStudentGender">
+            @foreach (var gender in genders)
+            {
+                <option value="@gender.id">@gender.gender1</option>
+            }
+        </select>
+        <input type="datetime-local" @bind="newStudentBirthday" placeholder="Surname" />
+        <button type="button" class="btn btn-success" @onclick="@(buttonText == "Add" ? (Func<Task>)AddStudent : PutStudent)">@buttonText</button>
+        <br />
+    </div>
+
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Id</th>
+                <th>Name</th>
+                <th>Surname</th>
+                <th>Gender</th>
+                <th>Birthday</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var student in students)
+            {
+                <tr>
+                    <td>@student.id</td>
+                    <td>@student.name</td>
+                    <td>@student.surname</td>
+                    <td>@student.genderName</td>
+                    <td>@student.birthday</td>
+                    <td>
+                        <button type="button" class="btn btn-danger" @onclick=@(() => DeleteStudent(@student.id))>Delete</button>
+                        <button type="button" class="btn btn-primary" @onclick=@(() => StartPut(@student.id, @student.name, @student.surname, @student.gender, @student.birthday ))>Modify</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+else
+{
+    <p>Without Data</p>
+}
+
+@code {
+    public class Students
+    {
+        public int id { get; set; }
+        public string name { get; set; }
+        public string surname { get; set; }
+        public int gender { get; set; }
+        public string genderName { get; set; }
+        public DateTime birthday { get; set; }
+    }
+
+    public class Genders
+    {
+        public int id { get; set; }
+        public string gender1 { get; set; }
+    }
+
+    private List<Students> students;
+    private List<Genders> genders;
+    private int currentId;
+    private string newStudentName;
+    private string newStudentSurname;
+    private int newStudentGender = 0;
+    private DateTime newStudentBirthday = DateTime.Now;
+    private string buttonText = "Add";
+
+    private async Task RefreshList()
+    {
+        using HttpClient httpClient = new HttpClient();
+        var response = await httpClient.GetAsync("http://localhost:5262/api/Students");
+        response.EnsureSuccessStatusCode();
+        var jsonString = await response.Content.ReadAsStringAsync();
+
+        students = JsonSerializer.Deserialize<List<Students>>(jsonString);
+
+        foreach (var student in students)
+        {
+            var gender = genders.FirstOrDefault(g => g.id == student.gender);
+            if (gender != null)
+            {
+                student.genderName = gender.gender1;
+            }
+        }
+    }
+
+    private async Task LoadGenders()
+    {
+        using HttpClient httpClient = new HttpClient();
+        var response = await httpClient.GetAsync("http://localhost:5262/api/Genders");
+        response.EnsureSuccessStatusCode();
+        var jsonString = await response.Content.ReadAsStringAsync();
+
+        genders = JsonSerializer.Deserialize<List<Genders>>(jsonString);
+        Console.WriteLine(genders);
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadGenders();
+        if (genders != null)
+        {
+            await RefreshList();
+        }
+    }
+
+    private async Task AddStudent()
+    {
+        var newStudent = new Students
+            {
+                name = newStudentName,
+                surname = newStudentSurname,
+                gender = newStudentGender,
+                birthday = newStudentBirthday
+            };
+
+        using HttpClient httpClient = new HttpClient();
+        var json = JsonSerializer.Serialize(newStudent);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        var response = await httpClient.PostAsync("http://localhost:5262/api/Students", content);
+        response.EnsureSuccessStatusCode();
+
+        newStudentName = "";
+        newStudentSurname = "";
+        StateHasChanged();
+        await RefreshList();
+    }
+
+    private async Task PutStudent()
+    {
+        var newStudent = new Students
+            {
+                id = currentId,
+                name = newStudentName,
+                surname = newStudentSurname,
+                gender = newStudentGender,
+                birthday = newStudentBirthday
+            };
+
+        using HttpClient httpClient = new HttpClient();
+        var json = JsonSerializer.Serialize(newStudent);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        var response = await httpClient.PutAsync("http://localhost:5262/api/Students/" + newStudent.id, content);
+        response.EnsureSuccessStatusCode();
+
+        newStudentName = "";
+        newStudentSurname = "";
+        currentId = 0;
+        buttonText = "Add";
+        StateHasChanged();
+        await RefreshList();
+    }
+
+    private void StartPut(int studentId, string studentName, string studentSurname, int studentGender, DateTime studentBirthday)
+    {
+        currentId = studentId;
+        newStudentName = studentName;
+        newStudentSurname = studentSurname;
+        newStudentGender = studentGender;
+        newStudentBirthday = studentBirthday;
+        buttonText = "Update";
+    }
+
+    private async Task DeleteStudent(int id)
+    {
+        using HttpClient httpClient = new HttpClient();
+        var response = await httpClient.DeleteAsync("http://localhost:5262/api/Students/" + id);
+        response.EnsureSuccessStatusCode();
+
+        StateHasChanged();
+        await RefreshList();
+    }
+    
+}
